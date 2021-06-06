@@ -62,7 +62,7 @@ print(fn1);
 Iold = imread(fn1).astype(np.float32)
 Inew = imread(fn2).astype(np.float32)
 
-lkAdapter = LucasKanade_PyCl(Niter=600, halfWindow=13, platformID=1) #Python OpenCL direct implementation #Was 12
+lkAdapter = LucasKanade_PyCl(Niter=600, halfWindow=13, platformID=0) #Python OpenCL direct implementation #Was 12
 if useLiuShenOF:                                        
     lsAdapter = LiuShenOpticalFlowAlgoAdapter(100000000000)
 else:
