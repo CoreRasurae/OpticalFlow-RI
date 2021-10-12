@@ -26,7 +26,7 @@ Implementations tested with Ubuntu 20.04.2LTS and Ubuntu 21.04
 Required packages include:
 apt install python3 python3-numpy python3-skimage python3-pyopencl python3-numba
 
-*Note:* A valid OpenCL device is required to run dense Lucas-Kanade and Horn-Schunck algorithms. 
+*Note:* A valid OpenCL device is required to run dense Lucas-Kanade and Farnebäck algorithms. 
 
 ## Running the examples
 There are a number of examples in the examples folder, namely:
