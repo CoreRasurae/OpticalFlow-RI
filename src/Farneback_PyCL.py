@@ -48,6 +48,7 @@
 //
 """
 
+
 import os
 from GaussianKernelBitExact import *
 import PIL
@@ -58,16 +59,16 @@ import pyopencl.array as cl_array
 #debug = debugger.Pdb().set_trace
 
 def imresize(im, res):
-    return np.array(Image.fromarray(im).resize(res, PIL.Image.BILINEAR))
+    return np.array(Image.fromarray(im).resize(res, PIL.Image.BILINEAR)) #PIL.Image.LANCZOS, PIL.Image.BICUBIC 
 
 class Farneback_PyCL(object):
     """
     Provides a port of the OpenCV Farneback OpenCL implementation for Python using PyOpenCL.
     It also implements the GenericPyramidalOpticalFlow client algorithms interface.
     """
-    def __init__(self, windowSize=33, Niters=200, polyN=7, polySigma=1.5, useGaussian=True, pyrScale=0.5, pyramidalLevels=1, platformID=0, deviceID=0, \
+    def __init__(self, windowSize=33, Niters=5, polyN=7, polySigma=1.5, useGaussian=True, pyrScale=0.5, pyramidalLevels=1, platformID=0, deviceID=0, \
                        provideGenericPyramidalDefaults=True):
-        assert(pyramidalLevels != 1, 'Currently pyramidal levels are not supported through this implementation port')
+        assert(pyramidalLevels >= 1, 'Pyramidal levels must be greater or equal than 1')
         self.useDouble = False    #Gains are so marginal that it doesn't justify performance impact
         self.windowSize = windowSize
         self.numIters = Niters
@@ -83,6 +84,7 @@ class Farneback_PyCL(object):
         self.kernelGaussianBlur = None
         self.kernelGaussianBlur5 = None
         self.kernelBoxFilter5 = None
+        #'-D polyN='%d, polyN_
         self.kernelPolyExpansion = None
         self.kernelUpdateFlow = None
         self.kernelUpdateMatrices = None
@@ -609,5 +611,5 @@ class Farneback_PyCL(object):
     def getGenericPyramidalDefaults(self):
         parameters = {}
         parameters['warping'] = False
-        parameters['scaling'] = False
+        parameters['scaling'] = True
         return parameters    

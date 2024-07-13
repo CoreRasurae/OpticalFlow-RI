@@ -18,6 +18,7 @@
 //    Dachuan Zhao, dachuan@multicorewareinc.com
 //    Yao Wang, bitwangyaoyao@gmail.com
 //    Xiaopeng Fu, fuxiaopeng2222@163.com
+//    Luis Mendes, luis.p.mendes@gmail.com
 //
 // Redistribution and use in source and binary forms, with or without modification,
 // are permitted provided that the following conditions are met:
@@ -45,7 +46,7 @@
 //
 //M*/
 
-#define GRIDSIZE    3
+#define GRIDSIZE    4
 #define LSx 8
 #define LSy 8
 // define local memory sizes
@@ -243,8 +244,8 @@ inline void SetPatch(local float* IPatchLocal, int TileY, int TileX,
 
     *Pch = VAL(yBase,xBase,0,0);
 
-    *Dx = mad((VAL(yBase,xBase,-1,1) + VAL(yBase,xBase,+1,1) - VAL(yBase,xBase,-1,-1) - VAL(yBase,xBase,+1,-1)), 3.0f, (VAL(yBase,xBase,0,1) - VAL(yBase,xBase,0,-1)) * 10.0f) * w;
-    *Dy = mad((VAL(yBase,xBase,1,-1) + VAL(yBase,xBase,1,+1) - VAL(yBase,xBase,-1,-1) - VAL(yBase,xBase,-1,+1)), 3.0f, (VAL(yBase,xBase,1,0) - VAL(yBase,xBase,-1,0)) * 10.0f) * w;
+    *Dx = mad((VAL(yBase,xBase,-1, 1) + VAL(yBase,xBase,+1, 1) - VAL(yBase,xBase,-1,-1) - VAL(yBase,xBase,+1,-1)), 3.0f, (VAL(yBase,xBase,0,1) - VAL(yBase,xBase, 0,-1)) * 10.0f) * w;
+    *Dy = mad((VAL(yBase,xBase, 1,-1) + VAL(yBase,xBase, 1,+1) - VAL(yBase,xBase,-1,-1) - VAL(yBase,xBase,-1,+1)), 3.0f, (VAL(yBase,xBase,1,0) - VAL(yBase,xBase,-1, 0)) * 10.0f) * w;
 
     *A11 = mad(*Dx, *Dx, *A11);
     *A12 = mad(*Dx, *Dy, *A12);
@@ -254,9 +255,9 @@ inline void SetPatch(local float* IPatchLocal, int TileY, int TileX,
 
 inline void GetPatch(image2d_t J, float x, float y,
               float* Pch, float* Dx, float* Dy,
-              float* b1, float* b2)
+              float* b1, float* b2, float w)
 {
-    float diff = read_imagef(J, sampler, (float2)(x,y)).x-*Pch;
+    float diff = (read_imagef(J, sampler, (float2)(x,y)).x-*Pch) * w;
     *b1 = mad(diff, *Dx, *b1);
     *b2 = mad(diff, *Dy, *b2);
 }
@@ -274,34 +275,37 @@ void ReadPatchIToLocalMem(image2d_t I, float2 Point, local float* IPatchLocal)
 {
     int xid=get_local_id(0);
     int yid=get_local_id(1);
-    //read (3*LSx)*(3*LSy) window. each macro call read LSx*LSy pixels block
-    READI(0,0);READI(0,1);READI(0,2);
-    READI(1,0);READI(1,1);READI(1,2);
-    READI(2,0);READI(2,1);READI(2,2);
+    //read (4*LSx)*(4*LSy) window. each macro call read LSx*LSy pixels block
+    READI(0,0);READI(0,1);READI(0,2);READI(0,3);
+    READI(1,0);READI(1,1);READI(1,2);READI(1,3);
+    READI(2,0);READI(2,1);READI(2,2);READI(2,3);
+    READI(3,0);READI(3,1);READI(3,2);READI(3,3);
     if(xid<2)
     {// read last 2 columns border. each macro call reads 2*LSy pixels block
-        READI(0,3);
-        READI(1,3);
-        READI(2,3);
+        READI(0,4);
+        READI(1,4);
+        READI(2,4);
+        READI(3,4);
     }
 
     if(yid<2)
     {// read last 2 row. each macro call reads LSx*2 pixels block
-        READI(3,0);READI(3,1);READI(3,2);
+        READI(4,0);READI(4,1);READI(4,2);READI(4,3);
     }
 
     if(yid<2 && xid<2)
     {// read right bottom 2x2 corner. one macro call reads 2*2 pixels block
-        READI(3,3);
+        READI(4,4);
     }
     barrier(CLK_LOCAL_MEM_FENCE);
 }
 #undef READI
 
 __attribute__((reqd_work_group_size(LSx, LSy, 1)))
-__kernel void lkSparse(image2d_t I, image2d_t J,
-                       __global const float2* prevPts, __global float2* nextPts, __global uchar* status, __global float* err,
-                       const int level, const int rows, const int cols, int PATCH_X, int PATCH_Y, int c_winSize_x, int c_winSize_y, int c_iters, char calcErr)
+__kernel void lkDense(image2d_t I, image2d_t J,
+                       __global  float* u, __global float* v, __global uchar* status, __global float* err,
+                       const int level, const int rows, const int cols, int PATCH_X, int PATCH_Y, int c_winSize_x, int c_winSize_y, 
+                       int assymetricWindowLeft, int assymetricWindowRight, int assymetricWindowTop, int assymetricWindowBottom, int c_iters, char calcErr)
 {
     __local float smem1[BUFFER];
     __local float smem2[BUFFER];
@@ -319,26 +323,53 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
     float wy0 = 1.0f;
     int xBase = mad24(xsize, 2, xid);
     int yBase = mad24(ysize, 2, yid);
-    float wx1 = (xBase < c_winSize_x) ? 1 : 0;
-    float wy1 = (yBase < c_winSize_y) ? 1 : 0;
+    float wx1 = (xBase < c_winSize_x - assymetricWindowRight) ? 1 : 0;
+    float wy1 = (yBase < c_winSize_y - assymetricWindowBottom) ? 1 : 0;
+    int xBase2 = mad24(xsize, 3, xid);
+    int yBase2 = mad24(ysize, 3, yid);
+    float wx2 = (xBase2 < c_winSize_x - assymetricWindowRight) ? 1 : 0;
+    float wy2 = (yBase2 < c_winSize_y - assymetricWindowBottom) ? 1 : 0;
+    
+    if (xid == 0)
+       wx0 = 1 - assymetricWindowLeft;
+       
+    if (yid == 0)
+       wy0 = 1 - assymetricWindowTop;       
 #else
 #if WSX == 1
     float wx0 = 1.0f;
     int xBase = mad24(xsize, 2, xid);
-    float wx1 = (xBase < c_winSize_x) ? 1 : 0;
+    float wx1 = (xBase < c_winSize_x - assymetricWindowRight) ? 1 : 0;
+    int xBase2 = mad24(xsize, 3, xid);
+    float wx2 = (xBase2 < c_winSize_x - assymetricWindowRight) ? 1 : 0;    
+    if (xid == 0)
+       wx0 = 1 - assymetricWindowLeft;
 #else
     int xBase = mad24(xsize, 1, xid);
-    float wx0 = (xBase < c_winSize_x) ? 1 : 0;
+    int xBase2 = mad24(xsize, 2, xid);
+    float wx0 = (xBase < c_winSize_x - assymetricWindowRight) ? 1 : 0;
+    if (xid == 0)
+       wx0 = 1 - assymetricWindowLeft;
+
     float wx1 = 0.0f;
+    float wx2 = 0.0f;
 #endif
 #if WSY == 1
     float wy0 = 1.0f;
     int yBase = mad24(ysize, 2, yid);
-    float wy1 = (yBase < c_winSize_y) ? 1 : 0;
+    float wy1 = (yBase < c_winSize_y - assymetricWindowBottom) ? 1 : 0;
+    int yBase2 = mad24(ysize, 3, yid);
+    float wy2 = (yBase2 < c_winSize_y - assymetricWindowBottom) ? 1 : 0;    
+    if (yid == 0)
+       wy0 = 1 - assymetricWindowTop;
 #else
     int yBase = mad24(ysize, 1, yid);
-    float wy0 = (yBase < c_winSize_y) ? 1 : 0;
+    int yBase2 = mad24(ysize, 2, yid);
+    float wy0 = (yBase < c_winSize_y - assymetricWindowBottom) ? 1 : 0;
+    if (yid == 0)
+       wy0 = 1 - assymetricWindowTop;
     float wy1 = 0.0f;
+    float wy2 = 0.0f;
 #endif
 #endif
 
@@ -346,7 +377,10 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
 
     const int tid = mad24(yid, xsize, xid);
 
-    float2 prevPt = prevPts[gid] / (float2)(1 << level);
+    //gid = dimI * dimJ
+    int j = gid % cols;
+    int i = gid / cols;
+    float2 prevPt = (float2)(j, i);
 
     if (prevPt.x < 0 || prevPt.x >= cols || prevPt.y < 0 || prevPt.y >= rows)
     {
@@ -386,6 +420,11 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
         SetPatch(IPatchLocal, 0, 2,
                     &I_patch[0][2], &dIdx_patch[0][2], &dIdy_patch[0][2],
                     &A11, &A12, &A22,wx1);
+
+        SetPatch(IPatchLocal, 0, 3,
+                    &I_patch[0][3], &dIdx_patch[0][3], &dIdy_patch[0][3],
+                    &A11, &A12, &A22,wx2);
+
     }
     {
         SetPatch(IPatchLocal, 1, 0,
@@ -400,6 +439,11 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
         SetPatch(IPatchLocal, 1,2,
                     &I_patch[1][2], &dIdx_patch[1][2], &dIdy_patch[1][2],
                     &A11, &A12, &A22,wx1*wy0);
+
+        SetPatch(IPatchLocal, 1,3,
+                    &I_patch[1][3], &dIdx_patch[1][3], &dIdy_patch[1][3],
+                    &A11, &A12, &A22,wx2*wy0);
+
     }
     {
         SetPatch(IPatchLocal, 2,0,
@@ -414,6 +458,27 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
         SetPatch(IPatchLocal, 2,2,
                     &I_patch[2][2], &dIdx_patch[2][2], &dIdy_patch[2][2],
                     &A11, &A12, &A22,wx1*wy1);
+                    
+        SetPatch(IPatchLocal, 2,3,
+                    &I_patch[2][3], &dIdx_patch[2][3], &dIdy_patch[2][3],
+                    &A11, &A12, &A22,wx2*wy1);
+    }
+    {
+        SetPatch(IPatchLocal, 3,0,
+                 &I_patch[3][0], &dIdx_patch[3][0], &dIdy_patch[3][0],
+                 &A11, &A12, &A22,wy2);
+
+        SetPatch(IPatchLocal, 3,1,
+                 &I_patch[3][1], &dIdx_patch[3][1], &dIdy_patch[3][1],
+                 &A11, &A12, &A22,wx0*wy2);
+
+        SetPatch(IPatchLocal, 3,2,
+                    &I_patch[3][2], &dIdx_patch[3][2], &dIdy_patch[3][2],
+                    &A11, &A12, &A22,wx1*wy2);
+                    
+        SetPatch(IPatchLocal, 3,3,
+                    &I_patch[3][3], &dIdx_patch[3][3], &dIdy_patch[3][3],
+                    &A11, &A12, &A22,wx2*wy2);
     }
 
 
@@ -437,14 +502,15 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
     A11 /= D;
     A12 /= D;
     A22 /= D;
+    prevPt = (float2)(j + u[gid], i + v[gid]) - c_halfWin;
 
-    prevPt = mad(nextPts[gid], 2.0f, - c_halfWin);
 
     float2 offset0 = (float2)(xid + 0.5f, yid + 0.5f);
     float2 offset1 = (float2)(xsize, ysize);
     float2 loc0 = prevPt + offset0;
     float2 loc1 = loc0 + offset1;
     float2 loc2 = loc1 + offset1;
+    float2 loc3 = loc2 + offset1;
 
     for (k = 0; k < c_iters; ++k)
     {
@@ -460,44 +526,72 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
         {
             GetPatch(J, loc0.x, loc0.y,
                      &I_patch[0][0], &dIdx_patch[0][0], &dIdy_patch[0][0],
-                     &b1, &b2);
-
+                     &b1, &b2, 1.0f);
 
             GetPatch(J, loc1.x, loc0.y,
                      &I_patch[0][1], &dIdx_patch[0][1], &dIdy_patch[0][1],
-                     &b1, &b2);
+                     &b1, &b2, wx0);
 
             GetPatch(J, loc2.x, loc0.y,
                         &I_patch[0][2], &dIdx_patch[0][2], &dIdy_patch[0][2],
-                        &b1, &b2);
+                        &b1, &b2, wx1);
+
+            GetPatch(J, loc3.x, loc0.y,
+                        &I_patch[0][3], &dIdx_patch[0][3], &dIdy_patch[0][3],
+                        &b1, &b2, wx2);
         }
         {
             GetPatch(J, loc0.x, loc1.y,
                      &I_patch[1][0], &dIdx_patch[1][0], &dIdy_patch[1][0],
-                     &b1, &b2);
-
+                     &b1, &b2, wy0);
 
             GetPatch(J, loc1.x, loc1.y,
                      &I_patch[1][1], &dIdx_patch[1][1], &dIdy_patch[1][1],
-                     &b1, &b2);
+                     &b1, &b2, wy0 * wx0);
 
             GetPatch(J, loc2.x, loc1.y,
                         &I_patch[1][2], &dIdx_patch[1][2], &dIdy_patch[1][2],
-                        &b1, &b2);
+                        &b1, &b2, wy0 * wx1);
+
+            GetPatch(J, loc3.x, loc1.y,
+                        &I_patch[1][3], &dIdx_patch[1][3], &dIdy_patch[1][3],
+                        &b1, &b2, wy0 * wx2);
         }
         {
             GetPatch(J, loc0.x, loc2.y,
                      &I_patch[2][0], &dIdx_patch[2][0], &dIdy_patch[2][0],
-                     &b1, &b2);
-
+                     &b1, &b2, wy1);
 
             GetPatch(J, loc1.x, loc2.y,
                      &I_patch[2][1], &dIdx_patch[2][1], &dIdy_patch[2][1],
-                     &b1, &b2);
+                     &b1, &b2, wy1 * wx0);
 
             GetPatch(J, loc2.x, loc2.y,
                         &I_patch[2][2], &dIdx_patch[2][2], &dIdy_patch[2][2],
-                        &b1, &b2);
+                        &b1, &b2, wy1 * wx1);
+
+            GetPatch(J, loc3.x, loc2.y,
+                        &I_patch[2][3], &dIdx_patch[2][3], &dIdy_patch[2][3],
+                        &b1, &b2, wy1 * wx2);
+        }
+
+
+        {
+            GetPatch(J, loc0.x, loc3.y,
+                     &I_patch[3][0], &dIdx_patch[3][0], &dIdy_patch[3][0],
+                     &b1, &b2, wy2);
+
+            GetPatch(J, loc1.x, loc3.y,
+                     &I_patch[3][1], &dIdx_patch[3][1], &dIdy_patch[3][1],
+                     &b1, &b2, wy2 * wx0);
+
+            GetPatch(J, loc2.x, loc3.y,
+                        &I_patch[3][2], &dIdx_patch[3][2], &dIdy_patch[3][2],
+                        &b1, &b2, wy2 * wx1);
+
+            GetPatch(J, loc3.x, loc3.y,
+                        &I_patch[3][3], &dIdx_patch[3][3], &dIdy_patch[3][3],
+                        &b1, &b2, wy2 * wx2);
         }
 
         reduce2(b1, b2, smem1, smem2, tid);
@@ -514,6 +608,7 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
         loc0 += delta;
         loc1 += delta;
         loc2 += delta;
+        loc3 += delta;
 
         if (fabs(delta.x) < THRESHOLD && fabs(delta.y) < THRESHOLD)
             break;
@@ -542,6 +637,21 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
             if(xBase < c_winSize_x)
                 GetError(J, loc2.x, loc2.y, &I_patch[2][2], &D, wx1*wy1);
         }
+        if(xBase2 < c_winSize_x)
+        {
+            GetError(J, loc3.x, loc0.y, &I_patch[0][3], &D, wx2);
+            GetError(J, loc3.x, loc1.y, &I_patch[1][3], &D, wx2*wy0);
+            GetError(J, loc3.x, loc2.y, &I_patch[2][3], &D, wx2*wy1);
+        }
+        if(yBase2 < c_winSize_y)
+        {
+            GetError(J, loc0.x, loc3.y, &I_patch[3][0], &D, wy2);
+            GetError(J, loc1.x, loc3.y, &I_patch[3][1], &D, wx0*wy2);
+            GetError(J, loc2.x, loc3.y, &I_patch[3][2], &D, wx1*wy2);            
+            if(xBase2 < c_winSize_x)
+                GetError(J, loc3.x, loc3.y, &I_patch[3][3], &D, wx2*wy2);
+        }
+
 
         reduce1(D, smem1, tid);
     }
@@ -550,7 +660,8 @@ __kernel void lkSparse(image2d_t I, image2d_t J,
     {
         prevPt += c_halfWin;
 
-        nextPts[gid] = prevPt;
+        u[gid] = prevPt.x - j;
+        v[gid] = prevPt.y - i;
 
         if (calcErr)
             err[gid] = smem1[0] / (float)(32 * c_winSize_x * c_winSize_y);

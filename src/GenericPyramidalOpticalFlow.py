@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 """
 This file implements the Pyramidal topology for generic Optical Flow algorithms.
@@ -16,7 +17,7 @@ In addition, it is also possible to use iterations at the same pyramidal level.
 //                           License Agreement
 //                For Open Source Computer Vision Library
 //
-// Copyright (C) 2020-2021, Luís Mendes.
+// Copyright (C) 2020-2024, Luís Mendes.
 //
 // @Authors
 //    Luis Mendes, luis <dot> mendes _at_ tecnico.ulisboa.pt
@@ -48,18 +49,72 @@ In addition, it is also possible to use iterations at the same pyramidal level.
 """
 
 import numpy as np
+from numba import jit, njit
 from matplotlib import pyplot as plt
-from scipy.ndimage.filters import gaussian_filter
+from matplotlib.pyplot import imshow, figure, show
+#from scipy.ndimage.filters import gaussian_filter
+from gaussian_filter import gaussian_filter, gaussian_filterPx
+###from scipy.ndimage import map_coordinates
 #from scipy.misc import imresize
 import PIL
 from PIL import Image
-#from IPython.core import debugger
-#debug = debugger.Pdb().set_trace
+from scipy.interpolate import RectBivariateSpline
+from IPython.core import debugger
+debug = debugger.Pdb().set_trace
+from time import sleep
 
 def imresize(im, res):
-    return np.array(Image.fromarray(im).resize(res, PIL.Image.BILINEAR)) #PIL.Image.LANCZOS, PIL.Image.BICUBIC 
+    return np.array(Image.fromarray(im).resize(res, PIL.Image.BICUBIC)) #PIL.Image.LANCZOS, PIL.Image.BICUBIC 
 
-def updateNextPyramidalLevel(im1IterNext, im1IterPrev, Uaccum, Vaccum, U, V, warping=True, biLinear=True, scale=False):
+def doBiLinearWarping(img, coordsY, coordsX, order, mode):
+    intCoordsY = np.int32(np.round(coordsY))
+    intCoordsX = np.int32(np.round(coordsX))
+        
+    dCoordsY = coordsY - intCoordsY
+    dCoordsX = coordsX - intCoordsX
+    
+    intCoordsYNeighbor = intCoordsY + 1
+    intCoordsXNeighbor = intCoordsX + 1
+    
+    resY = np.where(dCoordsY < 0)
+    resX = np.where(dCoordsX < 0)
+
+    intCoordsYNeighbor[resY] = intCoordsY[resY] - 1
+    intCoordsXNeighbor[resX] = intCoordsX[resX] - 1
+    
+    dCoordsY = np.abs(dCoordsY)
+    dCoordsX = np.abs(dCoordsX)
+    
+    resY = np.where(intCoordsY >= img.shape[0])
+    intCoordsY[resY] = np.float32(img.shape[0] - 1)
+    resY = np.where(intCoordsY < 0)
+    intCoordsY[resY] = np.float32(0)
+    resY = np.where(intCoordsYNeighbor >= img.shape[0])
+    intCoordsYNeighbor[resY] = np.float32(img.shape[0] - 1)
+    resY = np.where(intCoordsYNeighbor < 0)
+    intCoordsYNeighbor[resY] = np.float32(0) 
+
+    resX = np.where(intCoordsX >= img.shape[1])
+    intCoordsX[resX] = np.float32(img.shape[1] - 1)
+    resX = np.where(intCoordsX < 0)
+    intCoordsX[resX] = np.float32(0)
+    resX = np.where(intCoordsXNeighbor >= img.shape[1])
+    intCoordsXNeighbor[resX] = np.float32(img.shape[1] - 1)
+    resX = np.where(intCoordsXNeighbor < 0)
+    intCoordsXNeighbor[resX] = np.float32(0 )
+    
+    imgNew = np.zeros(img.shape, dtype=np.float32)
+    imgNew[:,:] = (1 - dCoordsY)  * (1 - dCoordsX)  * img[intCoordsY,intCoordsX] + \
+                  (1 - dCoordsY)  *      dCoordsX   * img[intCoordsY,intCoordsXNeighbor] + \
+                       dCoordsY   * (1 - dCoordsX)  * img[intCoordsYNeighbor,intCoordsX] + \
+                       dCoordsY   *      dCoordsX   * img[intCoordsYNeighbor,intCoordsXNeighbor]   
+    
+    #imshow(imgNew)
+    #show()
+    
+    return imgNew
+
+def updateNextPyramidalLevel(im1IterNext, im1IterPrev, im2IterNext, Uaccum, Vaccum, U, V, warping=True, biLinear=True, scale=False):
     """
     The shift/warp image method was based on Liu & Shen published Physics Based Optical flow reference code.
     (https://github.com/Tianshu-Liu/OpenOpticalFlow)
@@ -94,17 +149,26 @@ def updateNextPyramidalLevel(im1IterNext, im1IterPrev, Uaccum, Vaccum, U, V, war
     xDim = im1IterNext.shape[1]
 
     if xDimLastStep != xDim or yDimLastStep != yDim:
-        usNew = imresize(Uaccum, (xDim, yDim))
-        vsNew = imresize(Vaccum, (xDim, yDim))
+        #usNew = imresize(Uaccum, (xDim, yDim))
+        #vsNew = imresize(Vaccum, (xDim, yDim))
+        xPosLastStep = np.arange(xDimLastStep)/np.float32(xDimLastStep)
+        yPosLastStep = np.arange(yDimLastStep)/np.float32(yDimLastStep)
+        xPos = np.arange(xDim)/np.float32(xDim)
+        yPos = np.arange(yDim)/np.float32(yDim)
+        ipU = RectBivariateSpline(yPosLastStep, xPosLastStep, Uaccum)
+        usNew = np.float32(ipU(yPos,xPos))
+        ipV = RectBivariateSpline(yPosLastStep, xPosLastStep, Vaccum)
+        vsNew = np.float32(ipV(yPos,xPos))
     else:
         usNew=Uaccum
         vsNew=Vaccum
 
     if scale:
+        print('Scaling  ')
         scaleX = np.float32(xDim) / np.float32(xDimLastStep)
         scaleY = np.float32(yDim) / np.float32(yDimLastStep)
-        usNew *= scaleX
-        vsNew *= scaleY
+        usNew *= np.float32(scaleX)
+        vsNew *= np.float32(scaleY)
 
     uInitialStep = None
     vInitialStep = None
@@ -118,40 +182,26 @@ def updateNextPyramidalLevel(im1IterNext, im1IterPrev, Uaccum, Vaccum, U, V, war
         limitX=im1IterNext.shape[1]-1
         limitY=im1IterNext.shape[0]-1
         if biLinear:
-            ys=np.arange(0, im1IterNext.shape[0]-1)
-            xs=np.arange(0, im1IterNext.shape[1]-1)
+            ys=np.arange(0, im1IterNext.shape[0], dtype=np.int32)
+            xs=np.arange(0, im1IterNext.shape[1], dtype=np.int32)
             xsMesh, ysMesh = np.meshgrid(xs,ys)
-            usSwap = xsMesh + np.floor(usNew[0:-1,0:-1] + 0.5)
-            vsSwap = ysMesh + np.floor(vsNew[0:-1,0:-1] + 0.5)
-            limitX -= 1
-            limitY -= 1
         else:
-            ys=np.arange(0, im1IterNext.shape[0])
-            xs=np.arange(0, im1IterNext.shape[1])
+            ys=np.arange(0, im1IterNext.shape[0], dtype=np.int32)
+            xs=np.arange(0, im1IterNext.shape[1], dtype=np.int32)
             xsMesh, ysMesh = np.meshgrid(xs,ys)
-            usSwap = xsMesh + np.floor(usNew + 0.5)
-            vsSwap = ysMesh + np.floor(vsNew + 0.5)
-        usSwap = np.int16(usSwap);
-        vsSwap = np.int16(vsSwap);
-        usSwap[usSwap < 0] = 0;
-        usSwap[usSwap >= limitX] = limitX
-        vsSwap[vsSwap < 0] = 0;
-        vsSwap[vsSwap >= limitY] = limitY       
-        dUsNew = usNew - np.floor(usNew+0.5);
-        dVsNew = vsNew - np.floor(vsNew+0.5);
+            usSwap = np.int32(xsMesh + np.floor(usNew + 0.5))
+            vsSwap = np.int32(ysMesh + np.floor(vsNew + 0.5))
+            dUsNew = usNew - np.floor(usNew + np.float32(0.5))
+            dVsNew = vsNew - np.floor(vsNew + np.float32(0.5))
  
         if biLinear:
-            dUsNew = -dUsNew #Mirror fractional displacements to approximate Image1 to Image2
-            dVsNew = -dVsNew #Mirror fractional displacements to approximate Image1 to Image2
-            deltaY0=ysMesh
-            deltaX0=xsMesh
-            deltaY1=(ysMesh+1).astype(int)
-            deltaX1=(xsMesh+1).astype(int)
-            im1IterNext[vsSwap,usSwap] = (1 - dVsNew[0:-1,0:-1]) * (1 - dUsNew[0:-1,0:-1]) * im1IterNext[deltaY0,deltaX0] + \
-                                         (1 - dVsNew[0:-1,0:-1]) *      dUsNew[0:-1,0:-1]  * im1IterNext[deltaY0,deltaX1] + \
-                                              dVsNew[0:-1,0:-1]  * (1 - dUsNew[0:-1,0:-1]) * im1IterNext[deltaY1,deltaX0] + \
-                                              dVsNew[0:-1,0:-1]  *      dUsNew[0:-1,0:-1]  * im1IterNext[deltaY1,deltaX1]
+            print('Warping: BiLinear')
+            im1IterNext = doBiLinearWarping(im1IterNext, np.float32(ysMesh - vsNew/2.0), np.float32(xsMesh - usNew/2.0), order=1, mode='nearest')
+            im2IterNext = doBiLinearWarping(im2IterNext, np.float32(ysMesh + vsNew/2.0), np.float32(xsMesh + usNew/2.0), order=1, mode='nearest')
+            #im1IterNext = map_coordinates(im1IterNext, ((ysMesh - vsNew, xsMesh - usNew/2)), order=1, mode='nearest')
+            #im2IterNext = map_coordinates(im2IterNext, ((ysMesh + vsNew, xsMesh + usNew/2)), order=1, mode='nearest')            
         else:
+            print('Warping: Liu-Shen')
             #Apply integer displacement shifting/warping
             im1IterNext[vsSwap,usSwap] = im1IterNext[ysMesh,xsMesh];
             #Apply pixel intensity variations due to sub-pixel displacements (fractional part)
@@ -181,11 +231,11 @@ def updateNextPyramidalLevel(im1IterNext, im1IterPrev, Uaccum, Vaccum, U, V, war
         finalVAccum = np.zeros([im1IterNext.shape[0], im1IterNext.shape[1]], dtype='float32')
           
 
-    return im1IterNext, finalUAccum, finalVAccum, uInitialStep, vInitialStep
+    return im1IterNext, im2IterNext, finalUAccum, finalVAccum, uInitialStep, vInitialStep
 
 
 def genericPyramidalOpticalFlow(im1, im2, FILTER, mainOFlowAlgoAdapter, pyramidalLevels=1, kLevels=1,
-                                optionalOFlowAlgoAdapter=None, warping=True, biLinear=True, pyramidalScaling=False):
+                                FILTER_OPT=None, optionalOFlowAlgoAdapter=None, warping=True, biLinear=True, pyramidalIntermediateScaling=True, pyramidalScaling=False):
     """
     Implements a generic Pyramidal topology processing for OpticalFlow algorithms.
 
@@ -242,8 +292,8 @@ def genericPyramidalOpticalFlow(im1, im2, FILTER, mainOFlowAlgoAdapter, pyramida
  
     im1IterNew = None 
     im2IterNew = None
-    im1IterFiltered = None
-    im2IterFiltered = None
+    im1IterWork = None
+    im2IterWork = None
 
     U = None
     V = None
@@ -256,6 +306,7 @@ def genericPyramidalOpticalFlow(im1, im2, FILTER, mainOFlowAlgoAdapter, pyramida
         if defaultsMap is not None:
             warpingDefault = defaultsMap.get('warping')
             biLinearDefault = defaultsMap.get('biLinear')
+            pyramidalIntermediateScalingDefault = defaultsMap.get('intermediateScaling')
             pyramidalScalingDefault = defaultsMap.get('scaling')
             if warpingDefault is not None:
                 print('Using algorithm ' + mainOFlowAlgoAdapter.getAlgoName() + 
@@ -265,16 +316,23 @@ def genericPyramidalOpticalFlow(im1, im2, FILTER, mainOFlowAlgoAdapter, pyramida
                 print('Using algorithm ' + mainOFlowAlgoAdapter.getAlgoName() + 
                       ' default value for biLinear parameter:', biLinearDefault)
                 biLinear = biLinearDefault
+            if pyramidalIntermediateScalingDefault is not None:
+                print('Using algorithm ' + mainOFlowAlgoAdapter.getAlgoName() + 
+                      ' default value for intermediatePyramidalScaling parameter:', pyramidalIntermediateScalingDefault)
+                pyramidalIntermediateScaling = pyramidalIntermediateScalingDefault
             if pyramidalScalingDefault is not None:
                 print('Using algorithm ' + mainOFlowAlgoAdapter.getAlgoName() + 
                       ' default value for pyramidalScaling parameter:', pyramidalScalingDefault)
                 pyramidalScaling = pyramidalScalingDefault
 
     for level in np.arange(1, pyramidalLevels+1):
-        #debug()
-        im1IterPrev = im1IterFiltered
+        localPyramidalScaling = pyramidalIntermediateScaling
+        if level == pyramidalLevels:
+            localPyramidalScaling = pyramidalScaling
+        
+        im1IterPrev = im1IterWork
              
-        if scale < 1.0:
+        if scale < 1.0 and level != pyramidalLevels:
             #The image resizing algorithm plays an important role in final accuracy
             im1IterNew = imresize(im1,
                              (np.int(np.round(np.size(im1,1)*scale)),
@@ -288,44 +346,67 @@ def genericPyramidalOpticalFlow(im1, im2, FILTER, mainOFlowAlgoAdapter, pyramida
             im1IterNew = im1;
             im2IterNew = im2;
             
-        if FILTER > 1:
+
+        if level > 1:
+            #With pyramidal levels greater than one we need to adapt the downsized vector map to the new vector map as well as
+            #proceed with any image warping needed, from the imported vector map.
+            im1IterWarp, im2IterWarp, Uaccum, Vaccum, U, V = updateNextPyramidalLevel(im1IterNew, im1IterPrev, im2IterNew,
+                                                                              Uaccum, Vaccum, U, V, warping, biLinear, localPyramidalScaling);
+        else:
+            #Level is only equal to 1 at the first step, where we possibly start with the filtered downsized image and zero displacements
+            im1IterWarp = im1IterNew
+            im2IterWarp = im2IterNew
+            # set up initial velocities
+            U = np.zeros([im1IterNew.shape[0], im1IterNew.shape[1]], dtype='float32')
+            V = np.zeros([im1IterNew.shape[0], im1IterNew.shape[1]], dtype='float32')
+
+            #Setup initial accumulated velocities
+            Uaccum = np.zeros([im1IterNew.shape[0], im1IterNew.shape[1]], dtype='float32')
+            Vaccum = np.zeros([im1IterNew.shape[0], im1IterNew.shape[1]], dtype='float32')
+
+        if FILTER > 1e-3:
             std = FILTER * 0.62;
             #Radius of the gaussian_filter1d, called by gaussian_filter: lw = int(truncate * sd + 0.5)
             #and in _gaussian_kernel1d(...) -> x = numpy.arange(-radius, radius+1)
             #so d = 2*int(truncate * sd + 0.5) + 1
             #(https://github.com/scipy/scipy/blob/1d6a0b6750a674a6d17abf42a6cc12cb694b7501/scipy/ndimage/filters.py#L168)
-            im1IterFiltered = gaussian_filter(im1IterNew,FILTER,truncate=0.7406)
-            im2IterFiltered = gaussian_filter(im2IterNew,FILTER,truncate=0.7406)
+            im1IterWork = gaussian_filterPx(np.copy(im1IterWarp), FILTER, 3)
+            im2IterWork = gaussian_filterPx(np.copy(im2IterWarp), FILTER, 3)
         else:
-            im1IterFiltered = np.copy(im1IterNew)
-            im2IterFiltered = im2IterNew
+            im1IterWork = np.copy(im1IterWarp)
+            im2IterWork = im2IterWarp
 
-        if level > 1:
-            im1IterWork, Uaccum, Vaccum, U, V = updateNextPyramidalLevel(im1IterFiltered, im1IterPrev, 
-                                                                              Uaccum, Vaccum, U, V, warping, biLinear, pyramidalScaling);
-        else:
-            im1IterWork = im1IterFiltered
-            # set up initial velocities
-            U = np.zeros([im1IterFiltered.shape[0], im1IterFiltered.shape[1]], dtype='float32')
-            V = np.zeros([im1IterFiltered.shape[0], im1IterFiltered.shape[1]], dtype='float32')
-
-            #Setup initial accumulated velocities
-            Uaccum = np.zeros([im1IterFiltered.shape[0], im1IterFiltered.shape[1]], dtype='float32')
-            Vaccum = np.zeros([im1IterFiltered.shape[0], im1IterFiltered.shape[1]], dtype='float32')
+        if not optionalOFlowAlgoAdapter is None and FILTER_OPT > 1e-3:
+            #gaussian_filterPx overrides the input matrices with the filtered result, so we must copy before...
+            im1IterFilteredOpt = gaussian_filterPx(np.copy(im1IterNew), FILTER_OPT, 5)
+            im2IterFilteredOpt = gaussian_filterPx(np.copy(im2IterNew), FILTER_OPT, 5)
+        elif not optionalOFlowAlgoAdapter is None:
+            im1IterFilteredOpt = np.copy(im1IterNew)
+            im2IterFilteredOpt = im2IterNew
 
 
         for k in np.arange(0,kLevels):
             print('Level=',level,' kIter=',k)
 
             if k > 0:
-                im1IterWork, Uaccum, Vaccum, U, V = updateNextPyramidalLevel(np.copy(im1IterFiltered), im1IterFiltered,
-                                                                                     Uaccum, Vaccum, U, V, warping, biLinear, False);
+                 if warping:
+                     im1IterWarp, im2IterWarp, Uaccum, Vaccum, U, V = updateNextPyramidalLevel(np.copy(im1IterNew), im1IterNew, im2IterNew,
+                                                                                             Uaccum, Vaccum, U, V, warping, biLinear, False);
+                     if FILTER > 1:
+                         im1IterWork = gaussian_filterPx(np.copy(im1IterWarp), FILTER, 3)
+                         im2IterWork = gaussian_filterPx(np.copy(im2IterWarp), FILTER, 3)            
+                     else:
+                         im1IterWork = np.copy(im1IterWarp)
+                         im2IterWork = im2IterWarp
+                 else:
+                     im1IterWork, im2IterWork, Uaccum, Vaccum, U, V = updateNextPyramidalLevel(im1IterWork, im1IterWork, im2IterWork,
+                                                                                             Uaccum, Vaccum, U, V, warping, biLinear, False);
 
-            U, V, error = mainOFlowAlgoAdapter.compute(im1IterFiltered, im2IterFiltered, U, V)
+            U, V, error = mainOFlowAlgoAdapter.compute(im1IterWork, im2IterWork, U, V)
             print(mainOFlowAlgoAdapter.getAlgoName() + ' estimated error for image registration: ' + str(error));
 
             if not optionalOFlowAlgoAdapter is None:
-                U, V, errorOptional = optionalOFlowAlgoAdapter.compute(im1IterFiltered, im2IterFiltered, U, V)
+                U, V, errorOptional = optionalOFlowAlgoAdapter.compute(np.copy(im1IterFilteredOpt), np.copy(im2IterFilteredOpt), U, V)
                 print(optionalOFlowAlgoAdapter.getAlgoName() + ' estimated error for image registration: ' + str(errorOptional));
 
             Uaccum += U

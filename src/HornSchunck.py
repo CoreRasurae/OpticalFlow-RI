@@ -1,32 +1,12 @@
 #!/usr/bin/env python
 """
-MIT License
+examples:
 
-Copyright (c) 2020 Chinmay Wyawahare
-Copyright (c) 2021 Luís Mendes
+./HornSchunck.py data/box/box
+./HornSchunck.py data/office/office
+./HornSchunck.py data/rubic/rubic
+./HornSchunck.py data/sphere/sphere
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-
-This implementation was carried out by:
- Luis Mendes, luis <dot> mendes _at_ tecnico.ulisboa.pt
-and is a derived work from the implementation provided in:
- https://github.com/gandalf1819/Optical-Flow by Chinmay Wyawahare.
 """
 
 from __future__ import division
@@ -41,6 +21,9 @@ from scipy import signal
 #from IPython.core import debugger
 #debug = debugger.Pdb().set_trace
 #
+#from pyOpticalFlow import getimgfiles
+
+QUIVER = 5
 
 class HSOpticalFlowAlgoAdapter(object):
     def __init__(self, alphas, Niter, provideGenericPyramidalDefaults=True):
@@ -60,25 +43,27 @@ class HSOpticalFlowAlgoAdapter(object):
         
     def getGenericPyramidalDefaults(self):
         parameters = {}
-        parameters['warping'] = True
+        parameters['warping'] = True    
         parameters['biLinear'] = True
         parameters['scaling'] = True
         return parameters        
 
 @jit('Tuple((float32[:,:],float32[:,:]))(float32,float32[:,:],float32[:,:],float32[:,:],float32[:,:],float32[:,:])', nopython=True, parallel=False)
 def HS_helper2(alpha, fx, fy, ft, uAvg, vAvg):
-       #%% common part of update step
-       der = (fx*uAvg + fy*vAvg + ft) / (alpha**2 + fx**2 + fy**2)
-       #%% iterative step	
-       Unew = uAvg - fx * der
-       Vnew = vAvg - fy * der
-       return Unew, Vnew
+    #%% common part of update step       
+    der = (fx*uAvg + fy*vAvg + ft) / (alpha**2 + fx**2 + fy**2)
+    #%% iterative step	
+    Unew = uAvg - fx * der
+    Vnew = vAvg - fy * der
+    return Unew, Vnew
 
 #@njit(parallel=True)
 def HS_helper(alpha, Niter, kernel, U, V, fx, fy, ft):
     for _ in np.arange(Niter):
         #%% Compute local averages of the flow vectors
+        #with objmode(uAvg='float32[:,:]'):
         uAvg = filter2(U,kernel, mode='mirror') #uBar in the paper
+        #with objmode(vAvg='float32[:,:]'):
         vAvg = filter2(V,kernel, mode='mirror') #vBar in the paper
         
         U, V = HS_helper2(alpha, fx, fy, ft, uAvg, vAvg)
@@ -110,7 +95,7 @@ def HS(im2, im1, alpha, Niter, U, V):
     Unew = None
     VNew = None
 
-    Unew, Vnew = HS_helper(alpha, Niter, kernel, U, V, fx, fy, ft)
+    Unew, Vnew = HS_helper(alpha, Niter, kernel, np.float32(U), np.float32(V), fx, fy, ft)
     total_error = (norm(Unew-U,'fro')+norm(Vnew-V,'fro'))/(im1.shape[0]*im1.shape[1])
     
     U = Unew
@@ -139,3 +124,50 @@ def computeDerivatives(im1, im2):
     ft = filter2(im2, kernelT, mode=eMode) + filter2(im1,-kernelT, mode=eMode)
 
     return fx,fy,ft
+
+def compareGraphs(u,v,Inew,scale=3):
+    """
+    makes quiver
+    """
+    ax = plt.figure().gca()
+    ax.imshow(Inew,cmap = 'gray')
+    # plt.scatter(POI[:,0,1],POI[:,0,0])
+    for i in range(0,len(u),QUIVER):
+        for j in range(0,len(v),QUIVER):
+            ax.arrow(j,i, v[i,j]*scale, u[i,j]*scale, color='red')
+
+	# plt.arrow(POI[:,0,0],POI[:,0,1],0,-5)
+
+    plt.draw(); plt.pause(0.01)
+
+def demo(stem):
+    #flist,ext = getimgfiles(stem)
+    #
+    #for i in range(len(flist)-1):
+    #    fn1 = str(stem) +'.'+ str(i) + ext
+    #    Iold = imread(fn1,flatten=True).astype(float)  #flatten=True is rgb2gray
+    #    Iold = gaussian_filter(Iold,FILTER)
+    #
+    #    fn2 = str(stem) + '.' + str(i+1) + ext
+    #    Inew = imread(fn2,flatten=True).astype(float)
+    #    Inew = gaussian_filter(Inew,FILTER)
+    #    #plt.imshow(imgNew)
+    #    #plt.title('new image')
+    #
+    #    [U,V] = HS(Iold, Inew, 1, 100)
+    #    compareGraphs(U,V,Inew)
+    #
+    #
+    #return U,V
+    return
+
+
+if __name__ == '__main__':
+    from argparse import ArgumentParser
+    p = ArgumentParser(description='Pure Python Horn Schunck Optical Flow')
+    p.add_argument('stem',help='path/stem of files to analyze')
+    p = p.parse_args()
+
+    #U,V = demo(p.stem)
+
+    #plt.show()
