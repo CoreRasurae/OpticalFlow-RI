@@ -34,8 +34,10 @@ from HornSchunck import HSOpticalFlowAlgoAdapter
 
 def save_flow(U, V, filename):
     margins = { 'top' : 0,
-                'left' : 0 }
-
+                'left' : 0,
+                'bottom' : 0,
+                'right' : 0 }
+                
     results = { 'u' : U,
                 'v' : V,
                 'iaWidth' : 1,

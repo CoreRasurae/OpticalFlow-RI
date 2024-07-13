@@ -1,5 +1,5 @@
 """
-MIT LicenseCopyright (c) [2021] [Luís Mendes, luis <dot> mendes _at_ tecnico.ulisboa.pt]
+MIT LicenseCopyright (c) [2021-2024] [Luís Mendes, luis <dot> mendes _at_ tecnico.ulisboa.pt]
 
 Permission is hereby granted, free of charge, to any person obtaining a copy 
 of this software and associated documentation files (the "Software"), to deal
@@ -32,8 +32,10 @@ from Farneback_PyCL import Farneback_PyCL #Pure Python and OpenCL code (implemen
 
 def save_flow(U, V, filename):
     margins = { 'top' : 0,
-                'left' : 0 }
-
+                'left' : 0,
+                'bottom' : 0,
+                'right' : 0 }
+                
     results = { 'u' : U,
                 'v' : V,
                 'iaWidth' : 1,
@@ -47,6 +49,7 @@ def save_flow(U, V, filename):
     scipy.io.savemat(filename, mdict={'velocities': results, 'parameters': parameters}) 
 
 FILTER=0
+FILTER_OPT=0.48
 pyramidalLevels = 2
 kLevels = 1
 useLiuShenOF = True
@@ -66,11 +69,11 @@ Inew = imread(fn2).astype(np.float32)
 #fAdapter = FarnebackOpticalFlowAdapter(pyramidalLevels = 0)
 fAdapter = Farneback_PyCL(platformID=0)
 if useLiuShenOF:
-    lsAdapter = LiuShenOpticalFlowAlgoAdapter(100000000000)
+    lsAdapter = LiuShenOpticalFlowAlgoAdapter(10)
 else:
     lsAdapter = None
 
-[U,V] = genericPyramidalOpticalFlow(Iold, Inew, FILTER, fAdapter, pyramidalLevels, kLevels, lsAdapter)
+[U,V] = genericPyramidalOpticalFlow(Iold, Inew, FILTER, fAdapter, pyramidalLevels, kLevels, FILTER_OPT, lsAdapter)
 
 save_flow(U, V, os.path.join('.', 'LiuSE_Farneback_Fs0_0_PyrLvls2.mat'))
 

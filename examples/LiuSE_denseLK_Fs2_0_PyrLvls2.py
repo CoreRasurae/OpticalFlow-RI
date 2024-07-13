@@ -1,5 +1,5 @@
 """
-MIT LicenseCopyright (c) [2021] [Luís Mendes, luis <dot> mendes _at_ tecnico.ulisboa.pt]
+MIT LicenseCopyright (c) [2021-2024] [Luís Mendes, luis <dot> mendes _at_ tecnico.ulisboa.pt]
 
 Permission is hereby granted, free of charge, to any person obtaining a copy 
 of this software and associated documentation files (the "Software"), to deal
@@ -27,12 +27,14 @@ from skimage.io import imread
 import scipy.io
 from GenericPyramidalOpticalFlow import genericPyramidalOpticalFlow
 from PhysicsBasedOpticalFlowLiuShen import LiuShenOpticalFlowAlgoAdapter
-from LucasKanade_PyCL import LucasKanade_PyCl
+from denseLucasKanade_PyCL import denseLucasKanade_PyCl
 
 def save_flow(U, V, filename):
     margins = { 'top' : 0,
-                'left' : 0 }
-
+                'left' : 0,
+                'bottom' : 0,
+                'right' : 0 }
+                
     results = { 'u' : U,
                 'v' : V,
                 'iaWidth' : 1,
@@ -46,6 +48,7 @@ def save_flow(U, V, filename):
     scipy.io.savemat(filename, mdict={'velocities': results, 'parameters': parameters}) 
 
 FILTER=2
+FILTER_OPT=0.48
 pyramidalLevels = 2
 kLevels = 1
 useLiuShenOF = True
@@ -62,13 +65,13 @@ print(fn1);
 Iold = imread(fn1).astype(np.float32)
 Inew = imread(fn2).astype(np.float32)
 
-lkAdapter = LucasKanade_PyCl(Niter=600, halfWindow=13, platformID=0) #Python OpenCL direct implementation #Was 12
+lkAdapter = denseLucasKanade_PyCl(Niter=5, halfWindow=13, platformID=0) #Python OpenCL direct implementation #Was 12
 if useLiuShenOF:                                        
-    lsAdapter = LiuShenOpticalFlowAlgoAdapter(100000000000)
+    lsAdapter = LiuShenOpticalFlowAlgoAdapter(10)
 else:
     lsAdapter = None
 
-[U,V] = genericPyramidalOpticalFlow(Iold, Inew, FILTER, lkAdapter, pyramidalLevels, kLevels, lsAdapter, warping=False)
+[U,V] = genericPyramidalOpticalFlow(Iold, Inew, FILTER, lkAdapter, pyramidalLevels, kLevels, FILTER_OPT, lsAdapter, warping=False)
 
 save_flow(U, V, os.path.join('.', 'LiuSE_denseLK_Fs2_0_PyrLvls2.mat'))
 
