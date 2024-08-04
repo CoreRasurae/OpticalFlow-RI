@@ -335,11 +335,11 @@ def genericPyramidalOpticalFlow(im1, im2, FILTER, mainOFlowAlgoAdapter, pyramida
         if scale < 1.0 and level != pyramidalLevels:
             #The image resizing algorithm plays an important role in final accuracy
             im1IterNew = imresize(im1,
-                             (np.int(np.round(np.size(im1,1)*scale)),
-                              np.int(np.round(np.size(im1,0)*scale))))
+                             (np.int32(np.round(np.size(im1,1)*scale)),
+                              np.int32(np.round(np.size(im1,0)*scale))))
             im2IterNew = imresize(im2,
-                             (np.int(np.round(np.size(im1,1)*scale)),
-                              np.int(np.round(np.size(im1,0)*scale))))
+                             (np.int32(np.round(np.size(im1,1)*scale)),
+                              np.int32(np.round(np.size(im1,0)*scale))))
         elif scale > 1.0:
             raise Exception('Invalid scale level: ' + str(scale))
         else:

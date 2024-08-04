@@ -179,4 +179,5 @@ class denseLucasKanade_PyCl(object):
         parameters['warping'] = False
         parameters['intermediateScaling'] = True
         parameters['scaling'] = False
-        return parameters    
+        return parameters
+        

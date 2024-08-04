@@ -46,7 +46,7 @@ def convolveDirect(a, b, result):
 
 def prepareGaussianKernel(sigma, kernelSizePx):
    kernel = np.zeros(kernelSizePx, dtype=np.float32)
-   xs = np.arange(-kernelSizePx/2, kernelSizePx/2, 1, dtype=np.int)
+   xs = np.arange(-kernelSizePx/2, kernelSizePx/2, 1, dtype=int)
    kernel[:] = 1.0/np.sqrt(2.0 * np.pi * sigma**2) * np.exp( -xs**2/(2.0 * sigma**2) )
    kernel /= np.sum(kernel)
    return kernel
@@ -54,7 +54,7 @@ def prepareGaussianKernel(sigma, kernelSizePx):
 def convolveSeparableFilter(kernel, image):
    sizeY, sizeX = image.shape
    sizeK = kernel.shape[0]
-   halfSize = np.int(sizeK/2)
+   halfSize = int(sizeK/2)
    tempY = np.zeros([sizeX + sizeK - 1], dtype=np.float32)
    tempX = np.zeros([sizeY + sizeK - 1], dtype=np.float32)
    

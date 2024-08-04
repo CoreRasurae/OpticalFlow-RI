@@ -106,7 +106,7 @@ def getGaussianKernelBitExact(n, sigma):
         sigmaX = Decimal(n) * d0_15 + d0_35
     scale2X = dminus_0_125/(sigmaX*sigmaX)
         
-    n2_ = np.int((n - 1) / 2)
+    n2_ = int((n - 1) / 2)
     values = np.zeros([n2_ + 1], dtype=Decimal)
     x = 1-n
     sum = softZero

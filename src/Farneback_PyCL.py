@@ -72,7 +72,7 @@ class Farneback_PyCL(object):
         self.useDouble = False    #Gains are so marginal that it doesn't justify performance impact
         self.windowSize = windowSize
         self.numIters = Niters
-        self.polyN = np.int(polyN)
+        self.polyN = int(polyN)
         self.polySigma = polySigma
         self.useGaussianFilter = useGaussian
         self.pyramidalLevels = pyramidalLevels-1
@@ -202,8 +202,8 @@ class Farneback_PyCL(object):
     def setGaussianBlurKernel(self, smoothSize, sigma):
         g = self.getGaussianKernel(smoothSize, sigma)
         #print(g, np.sum(g))
-        m_gKer = np.zeros([1, np.int(smoothSize/2) + 1], dtype=np.float32)
-        m_gKer[0,:] = g[0, np.int(smoothSize/2):]
+        m_gKer = np.zeros([1, int(smoothSize/2) + 1], dtype=np.float32)
+        m_gKer[0,:] = g[0, int(smoothSize/2):]
         #print(m_gKer)
         self.matrixGKernel = m_gKer
 
@@ -219,7 +219,7 @@ class Farneback_PyCL(object):
         workGroupSize = (256, 1)
         globalSize    = (srcCols, srcRows)
 
-        smemSize = np.int((workGroupSize[0] + 2*kSizeHalf) * np.dtype(np.float32).itemsize)
+        smemSize = int((workGroupSize[0] + 2*kSizeHalf) * np.dtype(np.float32).itemsize)
 
         mf = cl.mem_flags
         srcCl = cl.Buffer(self.ctx, mf.READ_ONLY  | mf.COPY_HOST_PTR, hostbuf=src)
@@ -246,12 +246,12 @@ class Farneback_PyCL(object):
         dstRows = cl.cltypes.int(dst.shape[0])
         dstCols = cl.cltypes.int(dst.shape[1])
 
-        height = np.int(srcRows / 5)
+        height = int(srcRows / 5)
         numChannels   = cl.cltypes.int(1)
         workGroupSize = (256, 1)
         globalSize    = (srcCols, height)
 
-        smemSize = np.int((workGroupSize[0] + 2*kSizeHalf) * 5 * np.dtype(np.float32).itemsize)
+        smemSize = int((workGroupSize[0] + 2*kSizeHalf) * 5 * np.dtype(np.float32).itemsize)
 
         mf = cl.mem_flags
         srcCl = cl.Buffer(self.ctx, mf.READ_ONLY  | mf.COPY_HOST_PTR, hostbuf=src)
@@ -278,12 +278,12 @@ class Farneback_PyCL(object):
         dstRows       = cl.cltypes.int(dst.shape[0])
         dstCols       = cl.cltypes.int(dst.shape[1])
 
-        height        = np.int(srcRows / 5)
+        height        = int(srcRows / 5)
         workGroupSize = (256, 1)
         globalSize    = (srcCols, height)
         numChannels   = cl.cltypes.int(1)
 
-        smemSize = np.int((workGroupSize[0] + 2*kSizeHalf) * 5 * np.dtype(np.float32).itemsize)
+        smemSize = int((workGroupSize[0] + 2*kSizeHalf) * 5 * np.dtype(np.float32).itemsize)
 
         #Step0 is the size of a row in bytes (columns * number of channels * dataTypeSize)
         #step0  = np.dtype(np.float32).itemsize * src.shape[1]
@@ -315,10 +315,10 @@ class Farneback_PyCL(object):
         dstCols = cl.cltypes.int(dst.shape[1])
         numChannels = cl.cltypes.int(1)
         workGroupSize  = (256,1)
-        globalSize = (np.int((srcCols + workGroupSize[0] - 2*self.polyN - 1) / (workGroupSize[0] - 2*self.polyN)) * workGroupSize[0], \
+        globalSize = (int((srcCols + workGroupSize[0] - 2*self.polyN - 1) / (workGroupSize[0] - 2*self.polyN)) * workGroupSize[0], \
                       srcRows)
 
-        smemSize = np.int(3 * workGroupSize[0] * np.dtype(np.float32).itemsize)
+        smemSize = int(3 * workGroupSize[0] * np.dtype(np.float32).itemsize)
 
         mf = cl.mem_flags
         srcCl = cl.Buffer(self.ctx, mf.READ_ONLY  | mf.COPY_HOST_PTR, hostbuf=src)
@@ -510,11 +510,11 @@ class Farneback_PyCL(object):
                 scale *= self.pyrScale
         
             sigma = (1.0/scale - 1.0) * 0.5
-            smoothSize = np.int(round(sigma*5)) | 1
+            smoothSize = int(round(sigma*5)) | 1
             smoothSize = max(smoothSize, 3)
         
-            width  = np.int(round(size[1] * scale))
-            height = np.int(round(size[0] * scale))
+            width  = int(round(size[1] * scale))
+            height = int(round(size[0] * scale))
          
             if self.fastPyramids:            
                 width = pyramid0[k].shape[1];
