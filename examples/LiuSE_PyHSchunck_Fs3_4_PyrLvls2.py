@@ -132,7 +132,7 @@ Inew = imread(fn2).astype(np.float32)
 
 hsAdapter = HSOpticalFlowAlgoAdapter(hParamsPerLevel, 600)
 if useLiuShenOF:
-    lsAdapter = LiuShenOpticalFlowAlgoAdapter(5)
+    lsAdapter = LiuShenOpticalFlowAlgoAdapter(0.90)
 else:
     lsAdapter = None
 

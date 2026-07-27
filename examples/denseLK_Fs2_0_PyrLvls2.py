@@ -66,7 +66,7 @@ Inew = imread(fn2).astype(np.float32)
 
 lkAdapter = denseLucasKanade_PyCl(Niter=5, halfWindow=13, platformID=0) #Python OpenCL direct implementation #Was 12
 if useLiuShenOF:                                        
-    lsAdapter = LiuShenOpticalFlowAlgoAdapter(10)
+    lsAdapter = LiuShenOpticalFlowAlgoAdapter(0.90)
 else:
     lsAdapter = None
 

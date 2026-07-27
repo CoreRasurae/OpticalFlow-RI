@@ -69,7 +69,7 @@ Inew = imread(fn2).astype(np.float32)
 #fAdapter = FarnebackOpticalFlowAdapter(pyramidalLevels = 0)
 fAdapter = Farneback_PyCL(platformID=0)
 if useLiuShenOF:
-    lsAdapter = LiuShenOpticalFlowAlgoAdapter(10)
+    lsAdapter = LiuShenOpticalFlowAlgoAdapter(0.90)
 else:
     lsAdapter = None
 
