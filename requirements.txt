@@ -1,0 +1,6 @@
+numba
+pyopencl
+numpy
+scikit-image
+matplotlib
+IPython

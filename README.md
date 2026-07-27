@@ -21,10 +21,15 @@ Current reference implementations include: Horn-Schunck (Python, Numba), Lucas-K
 ## Prerequisites
 Python3 is required to run these algorithms.
 
-Implementations tested with Ubuntu 20.04.2LTS and Ubuntu 21.04
+Implementations tested with Ubuntu 24.04.4LTS.
 
-Required packages include:
-apt install python3 python3-numpy python3-skimage python3-pyopencl python3-numba
+Setup the environment:
+```
+apt install python3 python3-venv
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
 *Note:* A valid OpenCL device is required to run dense Lucas-Kanade and Farnebäck algorithms. 
 
@@ -43,6 +48,11 @@ There are a number of examples in the examples folder, namely:
 | PyHSchunck_Fs3_4_PyrLvls2.py      | Horn-Schunck with 3.4px Gaussian pre-filter with pyramidal                         | python3 PyHSchunck_Fs3_4_PyrLvls2.py      |
 | LiuSE_PyHSchunck_Fs3_4_PyrLvls2.py| Liu-Shen optimized Horn-Schunck with 3.4px Gaussian pre-filter with pyramidal      | python3 LiuSE_PyHSchunck_Fs3_4_PyrLvls2.py|
                                                                                                                                                                                                                                                                                                                                        
+### Example:
+```
+source venv/bin/activate
+python LiuSE_denseLK_Fs2_0_PyrLvls2.py
+```
 
 ## Obtaining the code
 
